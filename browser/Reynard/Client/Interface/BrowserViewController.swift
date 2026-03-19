@@ -5,6 +5,7 @@
 //  Created by Minh Ton on 4/3/26.
 //
 
+import AuthenticationServices
 import GeckoView
 import UIKit
 
@@ -510,6 +511,12 @@ extension BrowserViewController {
             })
         }
 
+        if element.isEditable {
+            alert.addAction(UIAlertAction(title: "AutoFill Password", style: .default) { [weak self] _ in
+                self?.requestCredentialAutofill(at: point)
+            })
+        }
+
         if let linkUri = element.linkUri, !linkUri.isEmpty {
             alert.addAction(UIAlertAction(title: "Copy Link", style: .default) { _ in
                 UIPasteboard.general.string = linkUri
@@ -546,6 +553,73 @@ extension BrowserViewController {
         }
 
         present(alert, animated: true)
+    }
+}
+
+// MARK: - AutoFill Password
+
+extension BrowserViewController: ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        view.window!
+    }
+
+    func requestCredentialAutofill(at point: CGPoint) {
+        let provider = ASAuthorizationPasswordProvider()
+        let request = provider.createRequest()
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = self
+        controller.presentationContextProvider = self
+        controller.performRequests()
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard let credential = authorization.credential as? ASPasswordCredential else { return }
+        let username = credential.user
+        let password = credential.password
+
+        let js = fillLoginFormJS(username: username, password: password)
+        tabManager.selectedTab?.session.load("javascript:void(\(js))")
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        // User cancelled or no credentials available — silently ignore
+    }
+
+    private func fillLoginFormJS(username: String, password: String) -> String {
+        func escapeJS(_ s: String) -> String {
+            s.replacingOccurrences(of: "\\", with: "\\\\")
+             .replacingOccurrences(of: "'", with: "\\'")
+             .replacingOccurrences(of: "\n", with: "\\n")
+             .replacingOccurrences(of: "\r", with: "")
+        }
+
+        let escapedUser = escapeJS(username)
+        let escapedPass = escapeJS(password)
+
+        return """
+        (function(){
+            var u='\(escapedUser)',p='\(escapedPass)';
+            var set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+            function fill(el,v){set.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}
+            var inputs=document.querySelectorAll('input');
+            var passFields=[],userField=null;
+            for(var i=0;i<inputs.length;i++){
+                var t=inputs[i].type.toLowerCase();
+                if(t==='password'&&!inputs[i].hidden&&inputs[i].offsetParent!==null)passFields.push(inputs[i]);
+            }
+            if(passFields.length===0)return;
+            var pf=passFields[0];
+            var form=pf.closest('form');
+            var scope=form||document;
+            var candidates=scope.querySelectorAll('input[type="text"],input[type="email"],input[type="tel"],input:not([type])');
+            for(var j=0;j<candidates.length;j++){
+                var c=candidates[j];
+                if(c.offsetParent!==null&&!c.hidden){userField=c;break;}
+            }
+            if(userField)fill(userField,u);
+            fill(pf,p);
+        })()
+        """
     }
 }
 

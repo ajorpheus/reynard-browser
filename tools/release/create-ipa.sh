@@ -22,10 +22,15 @@ if [ -z "$APP_PATH" ]; then
 	exit 1
 fi
 
-rm -rf "$WORK_DIR" "$ROOT_DIR/dist/Reynard.ipa"
+VERSION=$(sed -n 's/^CURRENT_VERSION *= *//p' "$ROOT_DIR/browser/Configuration/Reynard.xcconfig" | tr -d '[:space:]')
+GIT_SHORT=$(git -C "$ROOT_DIR" describe --tags --always 2>/dev/null || git -C "$ROOT_DIR" rev-parse --short HEAD)
+IPA_NAME="Reynard-${VERSION}-${GIT_SHORT}"
+
+rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR/Payload"
 
 cp -R "$APP_PATH" "$WORK_DIR/Payload/"
 
 cd "$WORK_DIR"
-zip -r ../Reynard.ipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX"
+zip -r "../${IPA_NAME}.ipa" Payload -x "._*" -x ".DS_Store" -x "__MACOSX"
+echo "Created: dist/${IPA_NAME}.ipa"
