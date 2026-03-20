@@ -5,7 +5,6 @@
 //  Created by Minh Ton on 4/3/26.
 //
 
-import AuthenticationServices
 import GeckoView
 import UIKit
 
@@ -558,31 +557,14 @@ extension BrowserViewController {
 
 // MARK: - AutoFill Password
 
-extension BrowserViewController: ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
-    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        view.window!
-    }
-
+extension BrowserViewController {
     func requestCredentialAutofill(at point: CGPoint) {
-        let provider = ASAuthorizationPasswordProvider()
-        let request = provider.createRequest()
-        let controller = ASAuthorizationController(authorizationRequests: [request])
-        controller.delegate = self
-        controller.presentationContextProvider = self
-        controller.performRequests()
-    }
-
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-        guard let credential = authorization.credential as? ASPasswordCredential else { return }
-        let username = credential.user
-        let password = credential.password
-
-        let js = fillLoginFormJS(username: username, password: password)
-        tabManager.selectedTab?.session.load("javascript:void(\(js))")
-    }
-
-    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        // User cancelled or no credentials available — silently ignore
+        let overlay = AutoFillOverlay { [weak self] username, password in
+            guard let self else { return }
+            let js = self.fillLoginFormJS(username: username, password: password)
+            self.tabManager.selectedTab?.session.load("javascript:void(\(js))")
+        }
+        overlay.present(in: view)
     }
 
     private func fillLoginFormJS(username: String, password: String) -> String {
